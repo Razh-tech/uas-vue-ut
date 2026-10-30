@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracking Delivery Order (DO) - Universitas Terbuka</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.7.16/dist/vue.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="navbar">
+      <div class="logo-area">
+        <h1>🎓 SIM Bahan Ajar UT</h1>
+        <p>Modul 2: Pelacakan Delivery Order (DO)</p>
+      </div>
+      <nav class="nav-links">
+        <a href="index.html">Beranda</a>
+        <a href="stok.html">Stok Bahan Ajar</a>
+        <a href="tracking.html" class="active">Tracking DO</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container" id="app">
+
+    <!-- Notifikasi Live dari Watcher Form -->
+    <div v-if="packageChangeNotice" class="watcher-alert">
+      💡 <span v-text="packageChangeNotice"></span>
+    </div>
+
+    <!-- Panel Form Tambah Entri DO Baru -->
+    <div class="card" style="border-top: 5px solid var(--accent);">
+      <div class="card-title">
+        <span>➕ Buat Delivery Order (DO) Baru</span>
+      </div>
+
+      <form @submit.prevent="createNewDO">
+        <div class="filter-grid">
+          <!-- Nomor DO (Otomatis Dihasilkan) -->
+          <div class="form-group">
+            <label>Nomor DO (Otomatis):</label>
+            <input type="text" class="form-control" :value="nextDONumber" readonly style="background:#e9ecef; font-weight:700; color:var(--primary);">
+          </div>
+
+          <!-- NIM Mahasiswa -->
+          <div class="form-group">
+            <label>NIM Mahasiswa *</label>
+            <input type="text" class="form-control" v-model="formDO.nim" placeholder="9 Digit Angka NIM">
+            <small v-if="formErrors.nim" style="color:var(--danger)">{{ formErrors.nim }}</small>
+          </div>
+
+          <!-- Nama Mahasiswa -->
+          <div class="form-group">
+            <label>Nama Mahasiswa *</label>
+            <input type="text" class="form-control" v-model="formDO.nama" placeholder="Nama Lengkap">
+            <small v-if="formErrors.nama" style="color:var(--danger)">{{ formErrors.nama }}</small>
+          </div>
+
+          <!-- Pilihan Ekspedisi -->
+          <div class="form-group">
+            <label>Layanan Ekspedisi *</label>
+            <select class="form-control" v-model="formDO.ekspedisi">
+              <option value="">-- Pilih Ekspedisi --</option>
+              <option v-for="p in pengirimanList" :key="p.kode" :value="p.nama">
+                JNE - {{ p.nama }}
+              </option>
+            </select>
+            <small v-if="formErrors.ekspedisi" style="color:var(--danger)">{{ formErrors.ekspedisi }}</small>
+          </div>
+
+          <!-- Tanggal Pengiriman -->
+          <div class="form-group">
+            <label>Tanggal Pengiriman:</label>
+            <input type="date" class="form-control" v-model="formDO.tanggalKirim">
+          </div>
+
+          <!-- Dropdown Paket Bahan Ajar -->
+          <div class="form-group">
+            <label>Paket Bahan Ajar *</label>
+            <select class="form-control" v-model="formDO.paketKode">
+              <option value="">-- Pilih Paket Bahan Ajar --</option>
+              <option v-for="pkt in paket" :key="pkt.kode" :value="pkt.kode">
+                {{ pkt.kode }} - {{ pkt.nama }}
+              </option>
+            </select>
+            <small v-if="formErrors.paketKode" style="color:var(--danger)">{{ formErrors.paketKode }}</small>
+          </div>
+        </div>
+
+        <!-- Rincian Dinamis Isi Paket yang Dipilih -->
+        <div v-if="selectedPackageInfo" style="background: #f8fafc; border: 1px dashed var(--accent); padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+          <h4 style="color: var(--primary); margin-bottom: 0.5rem;">📦 Detail Isi Paket yang Dipilih:</h4>
+          <p><strong>Nama Paket:</strong> {{ selectedPackageInfo.nama }}</p>
+          <p><strong>Daftar Modul / Bahan Ajar:</strong></p>
+          <ul style="margin-left: 1.5rem; margin-top: 0.3rem;">
+            <li v-for="mat in selectedPackageInfo.isi" :key="mat">
+              Kode Bahan Ajar: <code>{{ mat }}</code>
+            </li>
+          </ul>
+          <p style="margin-top: 0.5rem; font-size: 1.1rem; color: var(--success);">
+            <strong>Total Biaya Paket:</strong> Rp {{ selectedPackageInfo.harga.toLocaleString('id-ID') }}
+          </p>
+        </div>
+
+        <div style="margin-top: 1rem;">
+          <button type="submit" class="btn btn-primary">Keluarkan Delivery Order</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Pencarian & Pelacakan Status Pengiriman -->
+    <div class="card">
+      <div class="card-title">
+        <span>🔎 Lacak Delivery Order (DO)</span>
+        <input type="text" class="form-control" v-model="searchQuery" placeholder="Cari No. DO atau NIM..." style="max-width: 300px;">
+      </div>
+
+      <!-- Pesan Hasil Watcher 2: Status Pencarian -->
+      <p style="font-size: 0.85rem; color: #666; margin-bottom: 1rem;" v-text="searchFeedback"></p>
+
+      <!-- Daftar Kartu DO -->
+      <div v-for="(item, doNumber) in filteredTrackingList" :key="doNumber" style="border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin-bottom: 1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+          <div>
+            <h3 style="color: var(--primary);">{{ doNumber }}</h3>
+            <p style="font-size:0.9rem; color:#555;">NIM: <strong>{{ item.nim }}</strong> | Penerima: <strong>{{ item.nama }}</strong></p>
+          </div>
+          <div style="text-align: right;">
+            <span class="badge" style="background:#2980b9; color:white;">{{ item.status }}</span>
+            <p style="font-size: 0.85rem; margin-top: 0.2rem;">Ekspedisi: {{ item.ekspedisi }}</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 0.8rem; font-size: 0.9rem; background:#fbfbfb; padding:0.6rem; border-radius:6px;">
+          <span>Paket: <strong>{{ item.paket }}</strong> | Tanggal: <strong>{{ item.tanggalKirim }}</strong> | Total: <strong>Rp {{ item.total.toLocaleString('id-ID') }}</strong></span>
+        </div>
+
+        <!-- Timeline Perjalanan Bahan Ajar -->
+        <h4 style="margin-top: 1rem; font-size: 0.95rem; color: var(--primary);">Histori Perjalanan Paket:</h4>
+        <div class="timeline">
+          <div class="timeline-item" v-for="(log, idx) in item.perjalanan" :key="idx">
+            <div class="timeline-time">{{ log.waktu }}</div>
+            <div class="timeline-desc">{{ log.keterangan }}</div>
+          </div>
+        </div>
+
+        <!-- Tombol Interaktif Tambah Progres Pengiriman -->
+        <div style="margin-top: 1rem; border-top: 1px solid #eee; padding-top: 0.8rem;">
+          <button class="btn btn-secondary" style="font-size: 0.8rem;" @click="tambahCheckpoint(doNumber)">
+            ➕ Update Status Perjalanan
+          </button>
+        </div>
+      </div>
+
+      <div v-if="Object.keys(filteredTrackingList).length === 0" style="text-align:center; padding: 2rem; color: #888;">
+        Tidak ada arsip pengiriman yang cocok dengan kriteria pencarian.
+      </div>
+    </div>
+
+  </main>
+
+  <script src="js/tracking-app.js"></script>
+</body>
+</html>
